@@ -1,10 +1,9 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "byoa",
+	"name": "byoa-chat",
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-10-01",
 	"assets": { "not_found_handling": "single-page-application" },
-	"routes": [{ "pattern": "byoa.lwirth.com", "custom_domain": true }],
 	"durable_objects": {
 		"bindings": [{ "name": "SESSION", "class_name": "Session" }]
 	},

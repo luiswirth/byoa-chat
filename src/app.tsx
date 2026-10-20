@@ -14,7 +14,7 @@ function sessionId(): string {
 }
 
 function onboardingPrompt(link: string): string {
-	return `Talk with me through byoa, a page in my browser.
+	return `Talk with me through byoa-chat, a page in my browser.
 Read ${location.origin}/agent.md for how, then use this session link: ${link}`;
 }
 
@@ -68,7 +68,7 @@ export function App() {
 	return (
 		<main className="mx-auto flex h-dvh max-w-2xl flex-col gap-4 p-4">
 			<header className="flex items-center justify-between gap-2">
-				<h1 className="font-heading text-lg font-semibold">byoa</h1>
+				<h1 className="font-heading text-lg font-semibold">byoa-chat</h1>
 				<div className="flex items-center gap-2">
 					<Badge variant={listening ? "default" : "outline"}>
 						{listening ? "agent listening" : "agent away"}

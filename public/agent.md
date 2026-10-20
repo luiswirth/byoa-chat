@@ -1,4 +1,4 @@
-# byoa
+# byoa-chat
 
 A person talks with you through a page in their browser.
 They gave you a session link, `<link>` below.
