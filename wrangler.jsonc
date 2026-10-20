@@ -7,5 +7,6 @@
 	"durable_objects": {
 		"bindings": [{ "name": "SESSION", "class_name": "Session" }]
 	},
+	"r2_buckets": [{ "binding": "FILES", "bucket_name": "byoa-chat-files" }],
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Session"] }]
 }

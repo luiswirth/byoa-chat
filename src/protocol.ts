@@ -2,17 +2,29 @@
 
 export type Party = "person" | "agent";
 
-/** One numbered entry of a session's log: a message, or something worth
- * knowing. */
+/** Files larger than this are refused, since the relay stores them. */
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** One numbered entry of a session's log: something said, a file, or
+ * someone entering or leaving. A file's content is at `<link>/files/<n>`. */
 export type Entry = { n: number; time: string } & (
 	| { kind: "message"; from: Party; text: string }
-	| { kind: "page"; open: boolean }
+	| { kind: "file"; from: Party; name: string; type: string; size: number }
+	| { kind: "enter"; who: Party; name?: string }
+	| { kind: "leave"; who: Party }
 );
 
-/** How far the agent has read, and whether it is waiting to hear more. */
-export type Agent = { seen: number; listening: boolean };
+/** The agent as the page sees it. */
+export type Agent = {
+	present: boolean;
+	name?: string;
+	/** How far it has read the log. */
+	seen: number;
+	/** Whether it is waiting to hear more. */
+	listening: boolean;
+};
 
-/** From the page to the Worker. */
+/** From the page to the Worker. Files go up over HTTP instead. */
 export type FromPage =
 	| { kind: "say"; text: string }
 	| { kind: "seen"; n: number };
