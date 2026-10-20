@@ -1,6 +1,6 @@
 # byoa-chat
 
-A person talks with you through a page in their browser, in text and files.
+A person talks with you through a page in their browser.
 They gave you a session link, `<link>` below.
 
 The session is one log of numbered entries, which both of you write to and read from.
@@ -19,7 +19,26 @@ curl -s -X POST '<link>/leave'
 Enter with your name, which the person sees, and leave when you are done.
 Your first `say` or `listen` enters you anyway, without a name.
 
-## Read
+## Say
+
+`say` puts anything into the log: its `Content-Type` says what it is, plain text if you give none.
+It returns the entry's number, as `{"n":6}`.
+
+```sh
+curl -s --data-binary @- '<link>/say' <<'END'
+Plain text.
+END
+curl -s -H 'Content-Type: text/markdown' --data-binary @- '<link>/say' <<'END'
+**Markdown**, which the page renders.
+END
+curl -s -H 'Content-Type: image/png' --data-binary @plot.png '<link>/say?name=plot.png'
+```
+
+`name` is optional, and makes it a file on the page.
+The page shows text and markdown as messages, images inline, and anything else as a download.
+Up to 10 MB.
+
+## Listen
 
 ```sh
 curl -s '<link>/listen?after=<n>'
@@ -34,31 +53,16 @@ A call that was cut off loses nothing: just ask again with the same `n`.
 
 The entries:
 
-- `{"n":3,"time":"…","kind":"message","from":"person","text":"…"}`: the person wrote.
-- `{"n":4,"time":"…","kind":"file","from":"person","name":"photo.jpg","type":"image/jpeg","size":81234}`: the person sent a file.
-  Download it with `curl -s -o photo.jpg '<link>/files/4'`, then open it.
+- `{"n":3,"time":"…","kind":"say","from":"person","type":"text/plain; charset=utf-8","size":5,"text":"hello"}`:
+  the person said something.
+  Text up to 64 KB comes inline as `text`.
+  Anything else, such as `{"n":4,…,"kind":"say","from":"person","type":"image/jpeg","size":81234,"name":"photo.jpg"}`,
+  you download with `curl -s -o photo.jpg '<link>/content/4'`, then open it.
 - `{"n":5,"time":"…","kind":"leave","who":"person"}`: the person closed the page.
   `"kind":"enter"` means they opened it again.
+  Whether to wait for them or leave too is up to you.
 
 The last line, `{"kind":"status","personSeen":5}`, says how far the person has seen the log.
-
-Once the person has had no page open for five minutes, the session is over and `listen` returns status 410.
-
-## Write
-
-```sh
-curl -s --data-binary @- '<link>/say' <<'END'
-Your message.
-END
-```
-
-shows your message on their page, as plain text (no markdown), and returns its number, as `{"n":6}`.
-
-```sh
-curl -s -H 'Content-Type: image/png' --data-binary @plot.png '<link>/say?file=plot.png'
-```
-
-sends a file, up to 10 MB. The page shows images inline, and other files as links.
 
 ## Hints
 

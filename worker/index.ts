@@ -3,14 +3,11 @@ import {
 	type Agent,
 	type Entry,
 	type FromPage,
-	MAX_FILE_BYTES,
+	INLINE_BYTES,
+	MAX_BYTES,
 	type Party,
 	type ToPage,
 } from "../src/protocol.ts";
-
-/** How long a session outlasts the person's last page, so that a reload or a
- * locked phone doesn't end it. */
-const ABSENT_MS = 5 * 60_000;
 
 type New<T> = T extends unknown ? Omit<T, "n" | "time"> : never;
 
@@ -27,7 +24,6 @@ export class Session extends DurableObject<Env> {
 	listener: ((replaced: boolean) => void) | null = null;
 	/** The `listen` that is current, while there is one. */
 	listening: symbol | null = null;
-	absence: ReturnType<typeof setTimeout> | null = null;
 
 	override async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
@@ -47,9 +43,14 @@ export class Session extends DurableObject<Env> {
 			});
 			return new Response(null, { status: 101, webSocket: client });
 		}
-		if (action === "files" && arg && method === "GET") return this.file(arg);
-		if (action === "upload" && method === "POST") {
-			return this.say(request, "person", url.searchParams.get("file"));
+		if (action === "content" && arg && method === "GET") {
+			return this.content(Number(arg));
+		}
+		if (action === "say" && method === "POST") {
+			// The page writes as the person; anyone with the link could, too.
+			const from = url.searchParams.get("as") === "person" ? "person" : "agent";
+			if (from === "agent") await this.enter();
+			return this.say(request, from, url.searchParams.get("name"));
 		}
 		// The rest is the agent's.
 		if (action === "enter" && method === "POST") {
@@ -62,10 +63,6 @@ export class Session extends DurableObject<Env> {
 				await this.append({ kind: "leave", who: "agent" });
 			}
 			return text("left");
-		}
-		if (action === "say" && method === "POST") {
-			await this.enter();
-			return this.say(request, "agent", url.searchParams.get("file"));
 		}
 		if (action === "listen" && method === "GET") {
 			await this.enter();
@@ -83,55 +80,60 @@ export class Session extends DurableObject<Env> {
 		await this.append({ kind: "enter", who: "agent", ...(name && { name }) });
 	}
 
-	/** A message, or a file when the request names one. */
+	/** Logs a payload of any type. Short text goes into the log itself,
+	 * everything else into the bucket. */
 	async say(
 		request: Request,
 		from: Party,
-		file: string | null,
+		name: string | null,
 	): Promise<Response> {
-		if (file === null) {
-			const body = (await request.text()).trim();
-			if (!body) return text("empty message", 400);
-			const entry = await this.append({ kind: "message", from, text: body });
-			return Response.json({ n: entry.n });
-		}
 		const bytes = await request.arrayBuffer();
-		if (bytes.byteLength > MAX_FILE_BYTES) {
-			return text(`files are limited to ${MAX_FILE_BYTES} bytes`, 413);
+		if (bytes.byteLength === 0) return text("empty payload", 400);
+		if (bytes.byteLength > MAX_BYTES) {
+			return text(`payloads are limited to ${MAX_BYTES} bytes`, 413);
 		}
 		// curl sends a form's type unless told otherwise, which says nothing.
 		const sent = request.headers.get("Content-Type") ?? "";
 		const type =
 			!sent || sent.startsWith("application/x-www-form-urlencoded")
-				? "application/octet-stream"
+				? "text/plain; charset=utf-8"
 				: sent;
-		// Stored before its entry is numbered, so under a key of its own.
-		const key = `${this.ctx.id.toString()}/${crypto.randomUUID()}`;
-		await this.env.FILES.put(key, bytes, {
-			httpMetadata: { contentType: type },
-		});
+		const textual = type.startsWith("text/") || /[/+]json\b/.test(type);
+		const inline = textual && bytes.byteLength <= INLINE_BYTES;
+		let key: string | null = null;
+		if (!inline) {
+			// Stored before its entry is numbered, so under a key of its own.
+			key = `${this.ctx.id.toString()}/${crypto.randomUUID()}`;
+			await this.env.FILES.put(key, bytes, {
+				httpMetadata: { contentType: type },
+			});
+		}
 		const entry = await this.append({
-			kind: "file",
+			kind: "say",
 			from,
-			name: file || "file",
 			type,
 			size: bytes.byteLength,
+			...(name && { name }),
+			...(inline && { text: new TextDecoder().decode(bytes) }),
 		});
-		await this.ctx.storage.put(`file:${entry.n}`, key);
+		if (key) await this.ctx.storage.put(`content:${entry.n}`, key);
 		return Response.json({ n: entry.n });
 	}
 
-	async file(n: string): Promise<Response> {
-		const entry = (await this.log())[Number(n) - 1];
-		const key = await this.storage<string>(`file:${n}`);
-		const object = key ? await this.env.FILES.get(key) : null;
-		if (entry?.kind !== "file" || !object) return text("no such file", 404);
-		return new Response(object.body, {
-			headers: {
-				"Content-Type": entry.type,
+	async content(n: number): Promise<Response> {
+		const entry = (await this.log())[n - 1];
+		if (entry?.kind !== "say") return text("no such payload", 404);
+		const headers = {
+			"Content-Type": entry.type,
+			...(entry.name && {
 				"Content-Disposition": `inline; filename="${encodeURIComponent(entry.name)}"`,
-			},
-		});
+			}),
+		};
+		if (entry.text !== undefined) return new Response(entry.text, { headers });
+		const key = await this.storage<string>(`content:${n}`);
+		const object = key ? await this.env.FILES.get(key) : null;
+		if (!object) return text("no such payload", 404);
+		return new Response(object.body, { headers });
 	}
 
 	/** The entries after `after`, or after what the agent last acknowledged,
@@ -164,7 +166,6 @@ export class Session extends DurableObject<Env> {
 						headers: { "Content-Type": "application/jsonl" },
 					});
 				}
-				if (await this.over()) return text("the person left", 410);
 				let wake: (replaced: boolean) => void = () => {};
 				const replaced = await new Promise<boolean>((resolve) => {
 					wake = resolve;
@@ -187,13 +188,6 @@ export class Session extends DurableObject<Env> {
 	): Promise<void> {
 		if (typeof data !== "string") return;
 		const message = JSON.parse(data) as FromPage;
-		if (message.kind === "say" && message.text.trim()) {
-			await this.append({
-				kind: "message",
-				from: "person",
-				text: message.text.trim(),
-			});
-		}
 		if (message.kind === "seen") {
 			const seen = (await this.storage<number>("personSeen")) ?? 0;
 			const n = Math.min(message.n, (await this.log()).length);
@@ -206,7 +200,7 @@ export class Session extends DurableObject<Env> {
 	}
 
 	/** Logs the person entering with their first page and leaving with
-	 * their last, and times the session's end while no page is open. */
+	 * their last. */
 	async pagesChanged(): Promise<void> {
 		const open = this.ctx
 			.getWebSockets()
@@ -219,26 +213,6 @@ export class Session extends DurableObject<Env> {
 					: { kind: "leave", who: "person" },
 			);
 		}
-		if (this.absence) clearTimeout(this.absence);
-		if (open) {
-			await this.ctx.storage.delete("absentSince");
-			return;
-		}
-		let since = await this.storage<number>("absentSince");
-		if (since === undefined) {
-			since = Date.now();
-			await this.ctx.storage.put("absentSince", since);
-		}
-		this.absence = setTimeout(
-			() => this.listener?.(false),
-			since + ABSENT_MS - Date.now(),
-		);
-	}
-
-	/** Whether the person has had no page open for `ABSENT_MS`. */
-	async over(): Promise<boolean> {
-		const since = await this.storage<number>("absentSince");
-		return since !== undefined && Date.now() - since >= ABSENT_MS;
 	}
 
 	async append(entry: New<Entry>): Promise<Entry> {

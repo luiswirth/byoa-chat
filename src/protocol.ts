@@ -2,14 +2,23 @@
 
 export type Party = "person" | "agent";
 
-/** Files larger than this are refused, since the relay stores them. */
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** Payloads larger than this are refused, since the relay stores them. */
+export const MAX_BYTES = 10 * 1024 * 1024;
 
-/** One numbered entry of a session's log: something said, a file, or
- * someone entering or leaving. A file's content is at `<link>/files/<n>`. */
+/** Text payloads up to this size come inline, as `text`. */
+export const INLINE_BYTES = 64 * 1024;
+
+/** One numbered entry of a session's log: a payload of any type, or someone
+ * entering or leaving. Every payload is at `<link>/content/<n>`. */
 export type Entry = { n: number; time: string } & (
-	| { kind: "message"; from: Party; text: string }
-	| { kind: "file"; from: Party; name: string; type: string; size: number }
+	| {
+			kind: "say";
+			from: Party;
+			type: string;
+			size: number;
+			name?: string;
+			text?: string;
+	  }
 	| { kind: "enter"; who: Party; name?: string }
 	| { kind: "leave"; who: Party }
 );
@@ -24,10 +33,8 @@ export type Agent = {
 	listening: boolean;
 };
 
-/** From the page to the Worker. Files go up over HTTP instead. */
-export type FromPage =
-	| { kind: "say"; text: string }
-	| { kind: "seen"; n: number };
+/** From the page to the Worker. The page writes over HTTP, like the agent. */
+export type FromPage = { kind: "seen"; n: number };
 
 /** From the Worker to the page. */
 export type ToPage =

@@ -1,5 +1,6 @@
 import { Paperclip } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
@@ -7,7 +8,7 @@ import {
 	type Agent,
 	type Entry,
 	type FromPage,
-	MAX_FILE_BYTES,
+	MAX_BYTES,
 	type ToPage,
 } from "./protocol.ts";
 
@@ -92,29 +93,33 @@ export function App() {
 		return () => document.removeEventListener("visibilitychange", report);
 	}, [last, send]);
 
-	const submit = () => {
+	/** Writes to the log as the person, the same way the agent does. */
+	const say = async (body: Blob, type: string, name?: string) => {
+		const query = name ? `&name=${encodeURIComponent(name)}` : "";
+		const response = await fetch(`${link}/say?as=person${query}`, {
+			method: "POST",
+			body,
+			headers: { "Content-Type": type },
+		});
+		if (!response.ok) setProblem(await response.text());
+		return response.ok;
+	};
+
+	const submit = async () => {
 		const text = draft.trim();
-		if (!text || socket.current?.readyState !== WebSocket.OPEN) return;
-		send({ kind: "say", text });
-		setDraft("");
+		if (!text) return;
+		setProblem(null);
+		if (await say(new Blob([text]), "text/plain; charset=utf-8")) setDraft("");
 	};
 
 	const upload = async (files: Iterable<File>) => {
 		setProblem(null);
 		for (const file of files) {
-			if (file.size > MAX_FILE_BYTES) {
-				setProblem(`${file.name} is over ${size(MAX_FILE_BYTES)}.`);
+			if (file.size > MAX_BYTES) {
+				setProblem(`${file.name} is over ${size(MAX_BYTES)}.`);
 				continue;
 			}
-			const response = await fetch(
-				`${link}/upload?file=${encodeURIComponent(file.name)}`,
-				{
-					method: "POST",
-					body: file,
-					headers: { "Content-Type": file.type || "application/octet-stream" },
-				},
-			);
-			if (!response.ok) setProblem(`${file.name}: ${await response.text()}`);
+			await say(file, file.type || "application/octet-stream", file.name);
 		}
 	};
 
@@ -172,7 +177,7 @@ export function App() {
 				className="flex gap-2"
 				onSubmit={(event) => {
 					event.preventDefault();
-					submit();
+					void submit();
 				}}
 			>
 				<input
@@ -206,7 +211,7 @@ export function App() {
 					onKeyDown={(event) => {
 						if (event.key === "Enter" && !event.shiftKey) {
 							event.preventDefault();
-							submit();
+							void submit();
 						}
 					}}
 					placeholder="Say something to your agent"
@@ -239,24 +244,28 @@ function Item({
 	const bubble = mine
 		? "max-w-[80%] rounded-lg bg-primary px-3 py-2 whitespace-pre-wrap text-primary-foreground"
 		: "max-w-[80%] rounded-lg bg-muted px-3 py-2 whitespace-pre-wrap";
-	const url = `${link}/files/${entry.n}`;
+	const url = `${link}/content/${entry.n}`;
 	return (
 		<li
 			className={`flex flex-col gap-0.5 ${mine ? "items-end" : "items-start"}`}
 		>
-			{entry.kind === "message" ? (
+			{entry.text !== undefined && entry.type.startsWith("text/markdown") ? (
+				<div className="prose prose-sm max-w-[80%] rounded-lg bg-muted px-3 py-2 dark:prose-invert">
+					<Markdown>{entry.text}</Markdown>
+				</div>
+			) : entry.text !== undefined && !entry.name ? (
 				<div className={bubble}>{entry.text}</div>
 			) : entry.type.startsWith("image/") ? (
 				<a href={url} target="_blank" rel="noreferrer">
 					<img
 						src={url}
-						alt={entry.name}
+						alt={entry.name ?? "image"}
 						className="max-h-72 max-w-[80%] rounded-lg"
 					/>
 				</a>
 			) : (
 				<a href={url} target="_blank" rel="noreferrer" className={bubble}>
-					{entry.name} ({size(entry.size)})
+					{entry.name ?? entry.type} ({size(entry.size)})
 				</a>
 			)}
 			{mine && entry.n <= agent.seen && (
