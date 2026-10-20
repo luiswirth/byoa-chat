@@ -1,6 +1,8 @@
 import { Paperclip } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
@@ -251,7 +253,9 @@ function Item({
 		>
 			{entry.text !== undefined && entry.type.startsWith("text/markdown") ? (
 				<div className="prose prose-sm max-w-[80%] rounded-lg bg-muted px-3 py-2 dark:prose-invert">
-					<Markdown>{entry.text}</Markdown>
+					<Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+						{entry.text}
+					</Markdown>
 				</div>
 			) : entry.text !== undefined && !entry.name ? (
 				<div className={bubble}>{entry.text}</div>

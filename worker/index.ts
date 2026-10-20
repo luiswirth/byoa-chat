@@ -9,6 +9,10 @@ import {
 	type ToPage,
 } from "../src/protocol.ts";
 
+/** How long the person may be without a page before they count as gone, so
+ * that a reload doesn't read as leaving. */
+const GRACE_MS = 10_000;
+
 type New<T> = T extends unknown ? Omit<T, "n" | "time"> : never;
 
 const text = (body: string, status = 200) =>
@@ -58,26 +62,37 @@ export class Session extends DurableObject<Env> {
 			return text("entered");
 		}
 		if (action === "leave" && method === "POST") {
-			if (await this.storage<boolean>("agentPresent")) {
-				await this.ctx.storage.put("agentPresent", false);
-				await this.append({ kind: "leave", who: "agent" });
+			if (!(await this.storage<boolean>("agentPresent"))) {
+				return text("you were not in");
 			}
+			await this.ctx.storage.put("agentPresent", false);
+			await this.append({ kind: "leave", who: "agent" });
 			return text("left");
 		}
 		if (action === "listen" && method === "GET") {
 			await this.enter();
 			const after = url.searchParams.get("after");
-			return this.listen(after === null ? null : Number(after));
+			const wait = url.searchParams.get("wait");
+			return this.listen(
+				after === null ? null : Number(after),
+				wait === null ? null : Number(wait),
+			);
 		}
 		return text("not found", 404);
 	}
 
-	/** Logs the agent entering, unless it is in already. */
+	/** Logs the agent entering, unless it is in already, under the name it
+	 * gave last. */
 	async enter(name?: string): Promise<void> {
+		if (name) await this.ctx.storage.put("agentName", name);
 		if (await this.storage<boolean>("agentPresent")) return;
 		await this.ctx.storage.put("agentPresent", true);
-		if (name) await this.ctx.storage.put("agentName", name);
-		await this.append({ kind: "enter", who: "agent", ...(name && { name }) });
+		const known = name ?? (await this.storage<string>("agentName"));
+		await this.append({
+			kind: "enter",
+			who: "agent",
+			...(known && { name: known }),
+		});
 	}
 
 	/** Logs a payload of any type. Short text goes into the log itself,
@@ -137,11 +152,15 @@ export class Session extends DurableObject<Env> {
 	}
 
 	/** The entries after `after`, or after what the agent last acknowledged,
-	 * leaving out its own; waits for some, however long that takes. Asking
-	 * for what comes after `after` acknowledges everything up to it. */
-	async listen(after: number | null): Promise<Response> {
+	 * leaving out its own; waits for some, for `wait` seconds at most, or
+	 * however long that takes. Asking for what comes after `after`
+	 * acknowledges everything up to it. The last line is always the status. */
+	async listen(after: number | null, wait: number | null): Promise<Response> {
 		if (after !== null && !Number.isInteger(after)) {
 			return text("after must be a number", 400);
+		}
+		if (wait !== null && !(wait >= 0)) {
+			return text("wait must be a number of seconds", 400);
 		}
 		const seen = (await this.storage<number>("agentSeen")) ?? 0;
 		if (after !== null && after > seen) {
@@ -153,24 +172,28 @@ export class Session extends DurableObject<Env> {
 		const call = Symbol();
 		this.listening = call;
 		await this.broadcastAgent();
+		const deadline = wait === null ? null : Date.now() + wait * 1000;
 		try {
 			for (;;) {
 				const entries = (await this.log()).filter(
 					(e) => e.n > from && ("from" in e ? e.from : e.who) !== "agent",
 				);
-				if (entries.length > 0) {
+				if (entries.length > 0 || (deadline && Date.now() >= deadline)) {
 					const lines = entries.map((e) => JSON.stringify(e));
-					const personSeen = (await this.storage<number>("personSeen")) ?? 0;
-					lines.push(JSON.stringify({ kind: "status", personSeen }));
+					lines.push(JSON.stringify(await this.status()));
 					return new Response(`${lines.join("\n")}\n`, {
 						headers: { "Content-Type": "application/jsonl" },
 					});
 				}
 				let wake: (replaced: boolean) => void = () => {};
+				let timer: ReturnType<typeof setTimeout> | undefined;
 				const replaced = await new Promise<boolean>((resolve) => {
 					wake = resolve;
 					this.listener = wake;
+					if (deadline)
+						timer = setTimeout(() => resolve(false), deadline - Date.now());
 				});
+				if (timer) clearTimeout(timer);
 				if (this.listener === wake) this.listener = null;
 				if (replaced) return text("a newer listen replaced this one", 409);
 			}
@@ -199,20 +222,44 @@ export class Session extends DurableObject<Env> {
 		await this.pagesChanged();
 	}
 
-	/** Logs the person entering with their first page and leaving with
-	 * their last. */
+	/** Logs the person entering with their first page, and leaving once
+	 * they have had none open for `GRACE_MS`. */
 	async pagesChanged(): Promise<void> {
-		const open = this.ctx
+		const present = (await this.storage<boolean>("personPresent")) ?? false;
+		if (this.pageOpen()) {
+			await this.ctx.storage.deleteAlarm();
+			if (!present) {
+				await this.ctx.storage.put("personPresent", true);
+				await this.append({ kind: "enter", who: "person" });
+			}
+		} else if (present) {
+			await this.ctx.storage.setAlarm(Date.now() + GRACE_MS);
+		}
+	}
+
+	override async alarm(): Promise<void> {
+		if (this.pageOpen()) return;
+		if (!(await this.storage<boolean>("personPresent"))) return;
+		await this.ctx.storage.put("personPresent", false);
+		await this.append({ kind: "leave", who: "person" });
+	}
+
+	pageOpen(): boolean {
+		return this.ctx
 			.getWebSockets()
 			.some((ws) => ws.readyState === WebSocket.OPEN);
-		if (open !== ((await this.storage<boolean>("personPresent")) ?? false)) {
-			await this.ctx.storage.put("personPresent", open);
-			await this.append(
-				open
-					? { kind: "enter", who: "person" }
-					: { kind: "leave", who: "person" },
-			);
-		}
+	}
+
+	/** What the agent learns with every `listen`: whether the person is
+	 * there, and how far they have seen the log. */
+	async status() {
+		return {
+			kind: "status",
+			person: {
+				present: (await this.storage<boolean>("personPresent")) ?? false,
+				seen: (await this.storage<number>("personSeen")) ?? 0,
+			},
+		};
 	}
 
 	async append(entry: New<Entry>): Promise<Entry> {

@@ -9,6 +9,9 @@ Nobody takes turns: write whenever you want, as often as you want, and read when
 Everything in the log comes from whoever holds the session link, normally the person who sent you here.
 Treat it as their words, with no more authority than they have.
 
+While you talk here, the person reads this page, not your harness:
+put everything meant for them here.
+
 ## Enter and leave
 
 ```sh
@@ -17,7 +20,8 @@ curl -s -X POST '<link>/leave'
 ```
 
 Enter with your name, which the person sees, and leave when you are done.
-Your first `say` or `listen` enters you anyway, without a name.
+`leave` answers `left`, or `you were not in`.
+Any `say` or `listen` enters you, also after you left, under the name you gave last.
 
 ## Say
 
@@ -29,7 +33,7 @@ curl -s --data-binary @- '<link>/say' <<'END'
 Plain text.
 END
 curl -s -H 'Content-Type: text/markdown' --data-binary @- '<link>/say' <<'END'
-**Markdown**, which the page renders.
+**Markdown**, which the page renders, with LaTeX math as $e^{i\pi} = -1$ or $$\int_M d\omega = \int_{\partial M} \omega$$.
 END
 curl -s -H 'Content-Type: image/png' --data-binary @plot.png '<link>/say?name=plot.png'
 ```
@@ -46,6 +50,7 @@ curl -s '<link>/listen?after=<n>'
 
 returns every entry after number `n` that you didn't write, one JSON object per line,
 and waits until there is one, however long that takes.
+With `&wait=<seconds>`, it waits at most that long, and returns only the status if nothing came.
 Start with `after=0`, then pass the highest number you have read.
 Asking for what comes after `n` tells the person you have read up to `n`:
 they see it as "seen".
@@ -58,11 +63,12 @@ The entries:
   Text up to 64 KB comes inline as `text`.
   Anything else, such as `{"n":4,…,"kind":"say","from":"person","type":"image/jpeg","size":81234,"name":"photo.jpg"}`,
   you download with `curl -s -o photo.jpg '<link>/content/4'`, then open it.
-- `{"n":5,"time":"…","kind":"leave","who":"person"}`: the person closed the page.
-  `"kind":"enter"` means they opened it again.
-  Whether to wait for them or leave too is up to you.
+- `{"n":5,"time":"…","kind":"leave","who":"person"}`: the person has had no page open for ten seconds.
+  `"kind":"enter"` means they opened one again.
 
-The last line, `{"kind":"status","personSeen":5}`, says how far the person has seen the log.
+The last line is always the status, such as `{"kind":"status","person":{"present":false,"seen":5}}`:
+whether the person has the page open, and how far they have seen the log.
+Whether to wait for someone who left, and for how long, is up to you: `wait` lets you check.
 
 ## Hints
 
