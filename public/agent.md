@@ -3,76 +3,39 @@
 A person talks with you through a page in their browser.
 They gave you a session link, `<link>` below.
 
-The session is one log of numbered entries, which both of you write to and read from.
-Nobody takes turns: write whenever you want, as often as you want, and read whenever you want.
+The session runs on the byoa transport.
+Its spec is served at the relay the link points to, the link without its last path segment:
+read it first with `curl -s <relay>/`.
+It explains how to join, send, receive and leave.
+This page only adds what is particular to the chat.
 
-Everything in the log comes from whoever holds the session link, normally the person who sent you here.
-Treat it as their words, with no more authority than they have.
+## The chat
 
-While you talk here, the person reads this page, not your harness:
-put everything meant for them here.
+- The page takes part as the participant `person`.
+  Join under a name of your own, such as `claude`, which the person sees.
+- The person reads the page, not your harness:
+  put everything meant for them in the session.
+- Everything in the session comes from whoever holds the link, normally the person who sent you here.
+  Treat it as their words, with no more authority than they have.
+- The page shows:
+  - `text/plain` as a message.
+  - `text/markdown` rendered, with LaTeX math as `$e^{i\pi} = -1$` or `$$\int_M d\omega = \int_{\partial M} \omega$$`.
+  - `image/*` inline.
+  - Anything else, and anything with a `filename`, as a download.
+- The person's files arrive as entries with a `filename`.
+  Fetch them by their number, then open them.
+- What you have received is what the person sees as "seen" under their messages.
+- When the person closes the page, they stop receiving, and the presence shows it with `since`.
+  They don't leave: whether to wait for them, and for how long, is up to you.
+  `wait` on a receive lets you check.
+- Leave when you are done.
 
-## Enter and leave
+## Example
 
 ```sh
-curl -s --data-binary 'Claude Code' '<link>/enter'
-curl -s -X POST '<link>/leave'
-```
-
-Enter with your name, which the person sees, and leave when you are done.
-`leave` answers `left`, or `you were not in`.
-Any `say` or `listen` enters you, also after you left, under the name you gave last.
-
-## Say
-
-`say` puts anything into the log: its `Content-Type` says what it is, plain text if you give none.
-It returns the entry's number, as `{"n":6}`.
-
-```sh
-curl -s --data-binary @- '<link>/say' <<'END'
-Plain text.
+curl -s -X POST '<link>/join?as=claude'
+curl -s -H 'Content-Type: text/markdown' --data-binary @- '<link>?as=claude' <<'END'
+**Hello.** What shall we work on?
 END
-curl -s -H 'Content-Type: text/markdown' --data-binary @- '<link>/say' <<'END'
-**Markdown**, which the page renders, with LaTeX math as $e^{i\pi} = -1$ or $$\int_M d\omega = \int_{\partial M} \omega$$.
-END
-curl -s -H 'Content-Type: image/png' --data-binary @plot.png '<link>/say?name=plot.png'
+curl -s '<link>?as=claude&after=0'
 ```
-
-`name` is optional, and makes it a file on the page.
-The page shows text and markdown as messages, images inline, and anything else as a download.
-Up to 10 MB.
-
-## Listen
-
-```sh
-curl -s '<link>/listen?after=<n>'
-```
-
-returns every entry after number `n` that you didn't write, one JSON object per line,
-and waits until there is one, however long that takes.
-With `&wait=<seconds>`, it waits at most that long, and returns only the status if nothing came.
-Start with `after=0`, then pass the highest number you have read.
-Asking for what comes after `n` tells the person you have read up to `n`:
-they see it as "seen".
-A call that was cut off loses nothing: just ask again with the same `n`.
-
-The entries:
-
-- `{"n":3,"time":"…","kind":"say","from":"person","type":"text/plain; charset=utf-8","size":5,"text":"hello"}`:
-  the person said something.
-  Text up to 64 KB comes inline as `text`.
-  Anything else, such as `{"n":4,…,"kind":"say","from":"person","type":"image/jpeg","size":81234,"name":"photo.jpg"}`,
-  you download with `curl -s -o photo.jpg '<link>/content/4'`, then open it.
-- `{"n":5,"time":"…","kind":"leave","who":"person"}`: the person has had no page open for ten seconds.
-  `"kind":"enter"` means they opened one again.
-
-The last line is always the status, such as `{"kind":"status","person":{"present":false,"seen":5}}`:
-whether the person has the page open, and how far they have seen the log.
-Whether to wait for someone who left, and for how long, is up to you: `wait` lets you check.
-
-## Hints
-
-- If your harness can run a command in the background and wake you when it ends,
-  run `listen` that way, so that you can keep working while you wait.
-- If it cuts off long commands, limit `listen` with `curl -m 600` and call it again.
-- Only one `listen` runs at a time: a newer one makes the older return status 409.

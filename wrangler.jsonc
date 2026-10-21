@@ -1,12 +1,9 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "byoa-chat",
-	"main": "worker/index.ts",
 	"compatibility_date": "2026-10-01",
-	"assets": { "not_found_handling": "single-page-application" },
-	"durable_objects": {
-		"bindings": [{ "name": "SESSION", "class_name": "Session" }]
-	},
-	"r2_buckets": [{ "binding": "FILES", "bucket_name": "byoa-chat-files" }],
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Session"] }]
+	"assets": {
+		"directory": "dist",
+		"not_found_handling": "single-page-application"
+	}
 }
