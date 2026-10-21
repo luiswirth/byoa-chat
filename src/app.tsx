@@ -1,13 +1,12 @@
-import {
-	create,
-	type Entry,
-	JOIN,
-	LEAVE,
-	type Presence,
-	Session,
-} from "byoa/client";
+// A page to chat with an agent, on a session of the byoa transport.
+// Whoever starts creates the session: the page, which then hands the agent
+// a prompt with its token, or the agent, which gives the person the page with
+// the link as `#session=<link>`.
+import { type Entry, JOIN, LEAVE, type Session } from "byoa/client";
+import { Onboard } from "byoa/onboard";
+import { useSession } from "byoa/react";
 import { Paperclip } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
@@ -15,23 +14,11 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 
-/** The relay sessions live on. */
-const RELAY: string = import.meta.env.VITE_RELAY ?? "http://localhost:8790";
-
 /** The name the page takes part under. */
 const PERSON = "person";
 
 /** Payloads larger than this are refused by the relay. */
 const MAX_BYTES = 10 * 1024 * 1024;
-
-/** The session this page shows, from `/s/<id>`. */
-const sessionId = () => location.pathname.match(/^\/s\/([\w-]+)$/)?.[1];
-
-function onboardingPrompt(link: string): string {
-	return `Talk with me through byoa-chat, a page in my browser.
-Read ${location.origin}/agents.md for how, then use this session link: ${link}
-If your harness asks before running commands, ask me once to allow curl to ${new URL(link).origin}.`;
-}
 
 function size(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
@@ -40,56 +27,34 @@ function size(bytes: number): string {
 }
 
 export function App() {
-	const [id, setId] = useState(sessionId);
-	const [problem, setProblem] = useState<string | null>(null);
-
-	useEffect(() => {
-		if (id) return;
-		create(RELAY).then(
-			(link) => {
-				const made = link.split("/").at(-1) ?? "";
-				history.replaceState(null, "", `/s/${made}`);
-				setId(made);
-			},
-			(error: Error) => setProblem(`No session: ${error.message}`),
-		);
-	}, [id]);
-
-	if (!id) return <p className="p-4 text-sm text-destructive">{problem}</p>;
-	return <Chat key={id} link={`${RELAY}/s/${id}`} />;
-}
-
-function Chat({ link }: { link: string }) {
-	const [session] = useState(() => new Session(link, PERSON));
-	const [entries, setEntries] = useState<Entry[]>([]);
-	const [presence, setPresence] = useState<Presence>({});
+	const page = useSession(PERSON);
 	const [draft, setDraft] = useState("");
-	const [copied, setCopied] = useState(false);
-	const [problem, setProblem] = useState<string | null>(null);
+	const [failure, setFailure] = useState<string | null>(null);
 	const picker = useRef<HTMLInputElement>(null);
+	const { session, entries, presence, alone, leave } = page;
+	const problem = page.problem ?? failure;
 
-	useEffect(() => {
-		const unsubscribe = session.subscribe({
-			entry: () => setEntries([...session.log]),
-			presence: setPresence,
-			end: setProblem,
-		});
-		session.join().catch((error: Error) => setProblem(error.message));
-		return () => {
-			unsubscribe();
-			session.close();
-		};
-	}, [session]);
+	if (session && alone) {
+		return (
+			<Onboard
+				name="chat.senses.sh"
+				title="Chat with your agent"
+				description="Write to the agent you already use, and read its answers, here in your browser."
+				prompt={`Read ${location.origin}/agents.md and join with session token ${new URL(session.link).pathname.split("/").pop()}`}
+			/>
+		);
+	}
 
 	const send = async (
 		body: string | Blob,
 		options: { type?: string; filename?: string },
 	) => {
+		if (!session) return false;
 		try {
 			await session.send(body, options);
 			return true;
 		} catch (error) {
-			setProblem((error as Error).message);
+			setFailure((error as Error).message);
 			return false;
 		}
 	};
@@ -97,15 +62,15 @@ function Chat({ link }: { link: string }) {
 	const submit = async () => {
 		const text = draft.trim();
 		if (!text) return;
-		setProblem(null);
+		setFailure(null);
 		if (await send(text, { type: "text/plain; charset=utf-8" })) setDraft("");
 	};
 
 	const upload = async (files: Iterable<File>) => {
-		setProblem(null);
+		setFailure(null);
 		for (const file of files) {
 			if (file.size > MAX_BYTES) {
-				setProblem(`${file.name} is over ${size(MAX_BYTES)}.`);
+				setFailure(`${file.name} is over ${size(MAX_BYTES)}.`);
 				continue;
 			}
 			await send(file, {
@@ -113,12 +78,6 @@ function Chat({ link }: { link: string }) {
 				filename: file.name,
 			});
 		}
-	};
-
-	const copy = async () => {
-		await navigator.clipboard.writeText(onboardingPrompt(link));
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
 	};
 
 	const others = Object.entries(presence).filter(([name]) => name !== PERSON);
@@ -136,48 +95,37 @@ function Chat({ link }: { link: string }) {
 				void upload(event.dataTransfer.files);
 			}}
 		>
-			<header className="flex flex-wrap items-center justify-between gap-2">
-				<h1 className="font-heading text-lg font-semibold">byoa-chat</h1>
-				<div className="flex flex-wrap items-center gap-2">
-					{others.length === 0 && <Badge variant="outline">no agent</Badge>}
-					{others.map(([name, { receiving }]) => (
-						<Badge key={name} variant={receiving ? "default" : "outline"}>
-							{name} {receiving ? "listening" : "busy"}
-						</Badge>
-					))}
-					<Button variant="outline" onClick={copy}>
-						{copied ? "Copied" : "Onboard your agent"}
-					</Button>
-					<Button
-						variant="ghost"
-						onClick={async () => {
-							await session.leave().catch(() => {});
-							location.assign("/");
-						}}
-					>
-						New session
-					</Button>
-				</div>
-			</header>
-			<ol className="flex flex-1 flex-col gap-2 overflow-y-auto">
-				{shown.length === 0 && (
-					<li className="m-auto max-w-sm text-center text-sm text-muted-foreground">
-						Copy the prompt with "Onboard your agent" and give it to your agent,
-						such as Claude Code or Codex. Then write here, or drop a file.
-						Anyone with this page's link can talk to your agent, so keep it to
-						yourself.
-					</li>
-				)}
-				{shown.map((entry) => (
-					<Item
-						key={entry.n}
-						entry={entry}
-						session={session}
-						seenBy={others
-							.filter(([, { read }]) => read >= entry.n)
-							.map(([name]) => name)}
-					/>
+			<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+				<span className="flex-1">
+					Keep the token and this page's link secret.
+				</span>
+				{others.map(([name, { receiving }]) => (
+					<Badge key={name} variant={receiving ? "default" : "outline"}>
+						{name} {receiving ? "listening" : "busy"}
+					</Badge>
 				))}
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={session === null}
+					title="Leave the session: once everyone has left, it is deleted"
+					onClick={leave}
+				>
+					Leave
+				</Button>
+			</div>
+			<ol className="flex flex-1 flex-col gap-2 overflow-y-auto">
+				{session &&
+					shown.map((entry) => (
+						<Item
+							key={entry.n}
+							entry={entry}
+							session={session}
+							seenBy={others
+								.filter(([, { read }]) => read >= entry.n)
+								.map(([name]) => name)}
+						/>
+					))}
 			</ol>
 			{problem && <p className="text-sm text-destructive">{problem}</p>}
 			<form
@@ -224,7 +172,9 @@ function Chat({ link }: { link: string }) {
 					placeholder="Say something to your agent"
 					rows={2}
 				/>
-				<Button type="submit">Send</Button>
+				<Button type="submit" disabled={session === null}>
+					Send
+				</Button>
 			</form>
 		</main>
 	);

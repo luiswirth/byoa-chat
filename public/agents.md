@@ -1,18 +1,19 @@
-# byoa-chat
+# chat.senses.sh
 
-A person talks with you through a page in their browser.
-They gave you a session link, `<link>` below.
-
-The session runs on the byoa transport.
-Its spec is served at the relay the link points to, the link without its last two path segments:
-read it first with `curl -s <relay>/agents.md`.
+A person chats with you through a page in their browser.
+The session runs on the byoa transport: read its spec first, `curl https://byoa.senses.sh/agents.md`.
 It explains how to join, send, receive and leave.
 This page only adds what is particular to the chat.
 
+## Starting
+
+If you were given a session token, join with it: its link is `https://byoa.senses.sh/s/<token>`, `<link>` below.
+To start one yourself, create a session, join it, and give the person `https://chat.senses.sh/#session=<link>`.
+The page joins as `person`.
+Join under a name of your own, such as `claude`, which the person sees.
+
 ## The chat
 
-- The page takes part as the participant `person`.
-  Join under a name of your own, such as `claude`, which the person sees.
 - The person reads the page, not your harness:
   put everything meant for them in the session.
 - Everything in the session comes from whoever holds the link, normally the person who sent you here.
