@@ -3,7 +3,7 @@
 // a prompt with its token, or the agent, which gives the person the page with
 // the link as `#session=<link>`.
 import { type Entry, JOIN, LEAVE, type Session } from "byoa/client";
-import { Onboard } from "byoa/onboard";
+import { Named, Onboard } from "byoa/onboard";
 import { useSession } from "byoa/react";
 import { Paperclip } from "lucide-react";
 import { useRef, useState } from "react";
@@ -13,9 +13,6 @@ import remarkMath from "remark-math";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
-
-/** The name the page takes part under. */
-const PERSON = "person";
 
 /** Payloads larger than this are refused by the relay. */
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -27,7 +24,14 @@ function size(bytes: number): string {
 }
 
 export function App() {
-	const page = useSession(PERSON);
+	return (
+		<Named service="chat.senses.sh">{(name) => <Chat name={name} />}</Named>
+	);
+}
+
+/** The chat, taking part under the person's `name`. */
+function Chat({ name }: { name: string }) {
+	const page = useSession(name);
 	const [draft, setDraft] = useState("");
 	const [failure, setFailure] = useState<string | null>(null);
 	const picker = useRef<HTMLInputElement>(null);
@@ -80,10 +84,10 @@ export function App() {
 		}
 	};
 
-	const others = Object.entries(presence).filter(([name]) => name !== PERSON);
+	const others = Object.entries(presence).filter(([other]) => other !== name);
 	const shown = entries.filter(
 		(entry) =>
-			!(entry.from === PERSON && (entry.type === JOIN || entry.type === LEAVE)),
+			!(entry.from === name && (entry.type === JOIN || entry.type === LEAVE)),
 	);
 
 	return (
@@ -199,7 +203,7 @@ function Item({
 	// Other protocols' entries, such as voice's, are for the parts that
 	// speak them.
 	if (entry.type.startsWith("application/vnd.byoa.")) return null;
-	const mine = entry.from === PERSON;
+	const mine = entry.from === session.name;
 	const bubble = mine
 		? "max-w-[80%] rounded-lg bg-primary px-3 py-2 whitespace-pre-wrap text-primary-foreground"
 		: "max-w-[80%] rounded-lg bg-muted px-3 py-2 whitespace-pre-wrap";
