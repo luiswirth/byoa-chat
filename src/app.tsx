@@ -44,7 +44,7 @@ function Chat({ name }: { name: string }) {
 				name="chat.senses.sh"
 				title="Chat with your agent"
 				description="Write to the agent you already use, and read its answers, here in your browser."
-				prompt={`Read ${location.origin}/agents.md and join with session token ${new URL(session.link).pathname.split("/").pop()}`}
+				token={new URL(session.link).pathname.split("/").pop() ?? ""}
 			/>
 		);
 	}
