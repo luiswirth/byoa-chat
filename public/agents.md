@@ -4,8 +4,8 @@ A person talks with you through a page in their browser.
 They gave you a session link, `<link>` below.
 
 The session runs on the byoa transport.
-Its spec is served at the relay the link points to, the link without its last path segment:
-read it first with `curl -s <relay>/`.
+Its spec is served at the relay the link points to, the link without its last two path segments:
+read it first with `curl -s <relay>/agents.md`.
 It explains how to join, send, receive and leave.
 This page only adds what is particular to the chat.
 

@@ -29,7 +29,7 @@ const sessionId = () => location.pathname.match(/^\/s\/([\w-]+)$/)?.[1];
 
 function onboardingPrompt(link: string): string {
 	return `Talk with me through byoa-chat, a page in my browser.
-Read ${location.origin}/agent.md for how, then use this session link: ${link}
+Read ${location.origin}/agents.md for how, then use this session link: ${link}
 If your harness asks before running commands, ask me once to allow curl to ${new URL(link).origin}.`;
 }
 
@@ -56,7 +56,7 @@ export function App() {
 	}, [id]);
 
 	if (!id) return <p className="p-4 text-sm text-destructive">{problem}</p>;
-	return <Chat key={id} link={`${RELAY}/${id}`} />;
+	return <Chat key={id} link={`${RELAY}/s/${id}`} />;
 }
 
 function Chat({ link }: { link: string }) {
