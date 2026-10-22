@@ -2,9 +2,9 @@
 // Whoever starts creates the session: the page, which then hands the agent
 // a prompt with its token, or the agent, which gives the person the page with
 // the link as `#session=<link>`.
-import { type Entry, JOIN, LEAVE, type Session } from "byoa/client";
-import { Named, Onboard } from "byoa/onboard";
-import { useSession } from "byoa/react";
+import { type Entry, JOIN, LEAVE, type Session } from "byoa/participant";
+import { Named, Onboard } from "byoa-web/onboard";
+import { useSession } from "byoa-web/react";
 import { Paperclip } from "lucide-react";
 import { useRef, useState } from "react";
 import Markdown from "react-markdown";
