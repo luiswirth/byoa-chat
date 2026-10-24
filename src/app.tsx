@@ -1,6 +1,6 @@
 // A page to chat with an agent, on a session of the byoa transport.
 // Whoever starts creates the session: the page, which then hands the agent
-// a prompt with its token, or the agent, which gives the person the page with
+// a prompt with its link, or the agent, which gives the person the page with
 // the link as `#session=<link>`.
 import { type Entry, JOIN, LEAVE, type Session } from "byoa/participant";
 import { Named, Onboard } from "byoa-web/onboard";
@@ -44,7 +44,7 @@ function Chat({ name }: { name: string }) {
 				name="chat.senses.sh"
 				title="Chat with your agent"
 				description="Write to the agent you already use, and read its answers, here in your browser."
-				token={new URL(session.link).pathname.split("/").pop() ?? ""}
+				link={session.link}
 			/>
 		);
 	}
@@ -100,9 +100,7 @@ function Chat({ name }: { name: string }) {
 			}}
 		>
 			<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-				<span className="flex-1">
-					Keep the token and this page's link secret.
-				</span>
+				<span className="flex-1">Keep this page's link secret.</span>
 				{others.map(([name, { receiving }]) => (
 					<Badge key={name} variant={receiving ? "default" : "outline"}>
 						{name} {receiving ? "listening" : "busy"}
