@@ -45,6 +45,7 @@ function Chat({ name }: { name: string }) {
 				title="Chat with your agent"
 				description="Write to the agent you already use, and read its answers, here in your browser."
 				link={session.link}
+				person={name}
 			/>
 		);
 	}
