@@ -26,7 +26,7 @@ function size(bytes: number): string {
 
 export function App() {
 	return (
-		<Named service="chat.agentic.lwirth.com">
+		<Named service="chat.agentics.lwirth.com">
 			{(name) => <Chat name={name} />}
 		</Named>
 	);
@@ -44,7 +44,7 @@ function Chat({ name }: { name: string }) {
 	if (session && alone) {
 		return (
 			<Onboard
-				name="chat.agentic.lwirth.com"
+				name="chat.agentics.lwirth.com"
 				title="Chat with your agent"
 				description="Write to the agent you already use, and read its answers, here in your browser."
 				link={session.link}
