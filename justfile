@@ -6,6 +6,6 @@ ci:
     pnpm exec tsc -p .
     pnpm build
 
-# Builds the page and serves it at chat.senses.sh.
+# Builds the page and serves it at chat.agentic.lwirth.com.
 deploy: ci
-    pnpm exec wrangler deploy --domain chat.senses.sh
+    pnpm exec wrangler deploy --domain chat.agentic.lwirth.com
