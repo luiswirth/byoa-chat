@@ -1,11 +1,12 @@
-// A page to chat with an agent, on a session of the byoa transport.
+// A page to chat with an agent, on a session of the polylogue transport.
 // Whoever starts creates the session: the page, which then hands the agent
 // a prompt with its link, or the agent, which gives the person the page with
 // the link as `#session=<link>`.
-import { type Entry, JOIN, LEAVE, type Session } from "byoa/participant";
-import { Named, Onboard } from "byoa-web/onboard";
-import { useSession } from "byoa-web/react";
+
 import { Paperclip } from "lucide-react";
+import { type Entry, JOIN, LEAVE, type Session } from "polylogue/participant";
+import { Named, Onboard } from "polylogue-web/onboard";
+import { useSession } from "polylogue-web/react";
 import { useRef, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -203,7 +204,7 @@ function Item({
 	}
 	// Other protocols' entries, such as voice's, are for the parts that
 	// speak them.
-	if (entry.type.startsWith("application/vnd.byoa.")) return null;
+	if (entry.type.startsWith("application/vnd.polylogue.")) return null;
 	const mine = entry.from === session.name;
 	const bubble = mine
 		? "max-w-[80%] rounded-lg bg-primary px-3 py-2 whitespace-pre-wrap text-primary-foreground"
